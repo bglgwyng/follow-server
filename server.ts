@@ -7,6 +7,7 @@ import {
 	Follow,
 	Person,
 	MemoryKvStore,
+	Accept,
 } from "@fedify/fedify";
 import { federation } from "@fedify/fedify/x/hono";
 import { behindProxy } from "x-forwarded-fetch";
@@ -74,7 +75,13 @@ fedi
 		const parsed = ctx.parseUri(follow.objectId);
 		if (parsed?.type !== "actor" || parsed.identifier !== "me") return;
 		const follower = await follow.getActor(ctx);
+		if (follower == null) return;
 		console.debug(follower);
+		await ctx.sendActivity(
+			{ identifier: parsed.identifier },
+			follower,
+			new Accept({ actor: follow.objectId, object: follow }),
+		);
 	});
 
 const app = new Hono();
@@ -84,6 +91,10 @@ serve({
 	fetch: behindProxy(app.fetch),
 });
 
+app.onError((c, e) => {
+	console.error(e);
+	return new Response("Internal Server Error", { status: 500 });
+});
 // hono 인스턴스를 안만들고 바로 서빙하면 에러가 안뜸.
 // serve({
 // 	port: 8000,
