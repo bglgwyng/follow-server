@@ -8,9 +8,11 @@ import {
 	Person,
 	MemoryKvStore,
 } from "@fedify/fedify";
+import { federation } from "@fedify/fedify/x/hono";
 import { behindProxy } from "x-forwarded-fetch";
 import { configure, getConsoleSink } from "@logtape/logtape";
 import { openKv } from "@deno/kv";
+import { Hono } from "hono";
 
 const kv = await openKv("kv.db");
 
@@ -20,11 +22,11 @@ await configure({
 	loggers: [{ category: "fedify", sinks: ["console"], lowestLevel: "info" }],
 });
 
-const federation = createFederation<void>({
+const fedi = createFederation<void>({
 	kv: new MemoryKvStore(),
 });
 
-federation
+fedi
 	.setActorDispatcher("/users/{identifier}", async (ctx, identifier) => {
 		if (identifier !== "me") return null; // Other than "me" is not found.
 		return new Person({
@@ -37,7 +39,7 @@ federation
 		});
 	})
 	.setKeyPairsDispatcher(async (ctx, identifier) => {
-		if (identifier != "me") return []; // Other than "me" is not found.
+		if (identifier !== "me") return []; // Other than "me" is not found.
 		const entry = await kv.get<{
 			privateKey: JsonWebKey;
 			publicKey: JsonWebKey;
@@ -59,7 +61,7 @@ federation
 		return [{ privateKey, publicKey }];
 	});
 
-federation
+fedi
 	.setInboxListeners("/users/{identifier}/inbox", "/inbox")
 	.on(Follow, async (ctx, follow) => {
 		if (
@@ -75,12 +77,17 @@ federation
 		console.debug(follower);
 	});
 
+const app = new Hono();
+app.use(federation(fedi, () => {}));
 serve({
 	port: 8000,
-	fetch: behindProxy((request) =>
-		federation.fetch(request, { contextData: undefined }),
-	),
+	fetch: behindProxy(app.fetch),
 });
 
-// curl https://1f0c-121-136-244-64.ngrok-free.app/.well-known/webfinger?resource=acct:me@1f0c-121-136-244-64.ngrok-free.app
-// curl -H"Accept: application/activity+json" https://1f0c-121-136-244-64.ngrok-free.app/users/me
+// hono 인스턴스를 안만들고 바로 서빙하면 에러가 안뜸.
+// serve({
+// 	port: 8000,
+// 	fetch: behindProxy((request) =>
+// 		fedi.fetch(request, { contextData: undefined }),
+// 	),
+// });
