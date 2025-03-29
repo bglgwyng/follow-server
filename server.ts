@@ -25,6 +25,8 @@ await configure({
 
 const fedi = createFederation<void>({
 	kv: new MemoryKvStore(),
+	// with explicit `origin`, whether using `behindProxy` or not, 500 error
+	// origin: "..."
 });
 
 fedi
@@ -88,6 +90,9 @@ const app = new Hono();
 app.use(federation(fedi, () => {}));
 serve({
 	port: 8000,
+	// naked `app.fetch` without explicit `origin` works well
+	// fetch: app.fetch,
+	// with `behindProxy`, 500 error
 	fetch: behindProxy(app.fetch),
 });
 
@@ -95,10 +100,3 @@ app.onError((c, e) => {
 	console.error(e);
 	return new Response("Internal Server Error", { status: 500 });
 });
-// hono 인스턴스를 안만들고 바로 서빙하면 에러가 안뜸.
-// serve({
-// 	port: 8000,
-// 	fetch: behindProxy((request) =>
-// 		fedi.fetch(request, { contextData: undefined }),
-// 	),
-// });
